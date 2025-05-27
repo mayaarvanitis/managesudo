@@ -1,22 +1,26 @@
 #!/bin/bash
 
+# constants for directories and files
 SUDOERS_DIR="/etc/sudoers.d"
-TMP_FILE="/tmp/managesudo_tmp"
-LOG_FILE="/var/log/managesudo.log"
+TMP_FILE="/tmp/managesudo_tmp" # temporary file for sudo rules and used for validation of syntax
+LOG_FILE="/var/log/managesudo.log" # log file to store actions
 
+# Check if the script is run as root (EUID 0 = root) 
 if [[ "$EUID" -ne 0 ]]; then
 	echo "Please run this script with sudo."
 	exit 1
 fi
 
+# Function: Log any action with timestamp to the log file
 function log_action() {
 
 	local action="$1"
 	local timestamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
 
+ 	# If log file doesn't exist, create and secure it 
 	if [[ ! -f "$LOG_FILE" ]]; then
 		sudo touch "$LOG_FILE"
-		sudo chown root:devops "$LOG_FILE"
+		sudo chown root:devops "$LOG_FILE" # Adjust group as needed
 		sudo chmod 640 "$LOG_FILE"
 		echo "$timestamp Log file created." >> "$LOG_FILE"
 	fi
@@ -26,11 +30,12 @@ function log_action() {
 	
 	}
 
-function print_log() {
-		
+# Function: Print the current log file
+function print_log() {	
 	cat $LOG_FILE
 }
 
+# Function: Let user choose what kind of sudo permissions to grant
 function choose_permissions() {
 	local username="$1"
 	echo "Choose sudo permission levels for $username"
@@ -42,11 +47,13 @@ function choose_permissions() {
 
 		case "$choice" in
 			1)
+   				# Full access: all commands without password
 				echo "$username ALL=(ALL) NOPASSWD:ALL" > "$TMP_FILE"
 				echo "Full sudo access granted to $username"
 				break
 				;;
 			2) 
+   				# Placeholder
 				echo "Not finished..."
 				echo "custom access"
 				break
@@ -58,7 +65,8 @@ function choose_permissions() {
 }
 
 	# ===== if time add other access
-	
+
+# Function: Add user to sudoers (with safety and validation)
 function add_user() {
 	# Validation
 	while true; do
@@ -82,11 +90,13 @@ function add_user() {
 	# Choose Permission Levels Here
 	choose_permissions "$username" 
 
+ 	# No duplicate entries
 	if [[ -f "$SUDOERS_DIR/managesudo_$username" ]]; then
 		echo "Sudo permissions already exist for this user."
 		return
 	fi
-	
+ 
+	# Validate and move to sudoers	
 	if visudo -cf "$TMP_FILE"; then
 		sudo cp "$TMP_FILE" "$SUDOERS_DIR/managesudo_$username"
 		sudo chmod 440 "$SUDOERS_DIR/managesudo_$username"
@@ -95,11 +105,12 @@ function add_user() {
 		echo "Invalid sudoers entry. Exiting."
 	fi
 
-	rm -f "$TMP_FILE"
+	rm -f "$TMP_FILE" # clean up tmp file
 
-	log_action "$username added by $SUDO_USER."
+	log_action "$username added by $SUDO_USER." # log the action
 }
 
+# Function: Remove sudo access for a user
 function remove_user() {
 	read -rp "Enter the username you want to remove from sudoers: " username
 
@@ -107,7 +118,8 @@ function remove_user() {
 		echo "username cannot be empty"
 		return
 	fi
-
+ 
+	# Prevent locking out citical accounts
 	if [[ "$username" == "ec2-user" || "$username" == "root" ]]; then
 		echo " '$username' cannot be removed."
 		return
@@ -118,7 +130,7 @@ function remove_user() {
 		return
 	fi
 
-	echo "Are you sure you want to delete $username?!"
+	#echo "Are you sure you want to delete $username?!"
 
 	userfile="$SUDOERS_DIR/managesudo_$username"
 	echo "$userfile"
@@ -137,6 +149,7 @@ function remove_user() {
 	log_action "$username removed by $SUDO_USER."
 }
 
+# Function: List all users or just those with sudo access
 function list_users() {
 	echo ""
 	echo "=== List Users Menu ==="
@@ -166,6 +179,7 @@ function list_users() {
 	log_action "$SUDO_USER Generated list of users."
 }
 
+# Function: add or remove a user from a group
 function modify_groups() {
 	read -rp "Enter the username you wish to modify groups: " username
 
